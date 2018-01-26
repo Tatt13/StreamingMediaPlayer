@@ -7,10 +7,20 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
+import android.widget.CheckBox;
+import android.widget.CompoundButton;
 import android.widget.ProgressBar;
 
-import java.io.IOException;
+import com.example.suanysilva.streamingmediaplayer.api.Client;
+import com.example.suanysilva.streamingmediaplayer.api.ServiceGenerator;
+import com.example.suanysilva.streamingmediaplayer.api.models.Track;
 
+import java.io.IOException;
+import java.util.List;
+
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
 
 
 public class MainActivity extends AppCompatActivity implements MediaPlayer.OnPreparedListener {
@@ -19,7 +29,10 @@ public class MainActivity extends AppCompatActivity implements MediaPlayer.OnPre
 
     Button play, next, back;
     ProgressBar ProgressBar;
-    String uo = "http://spankradio.cz/international/2017/songs/The%20Chainsmokers%20Ft.%20Coldplay%20-%20Something%20Just%20Like%20This%20(spankradio.cz).mp3";
+    CheckBox shuffle;
+    List<Track> trackList;
+    boolean tracksLoaded = false;
+    /*String uo = "http://spankradio.cz/international/2017/songs/The%20Chainsmokers%20Ft.%20Coldplay%20-%20Something%20Just%20Like%20This%20(spankradio.cz).mp3";
     String url0 = "https://cldup.com/-TIo9vr6mt.mp3?download=Christina%20Perri%20-%20A%20Thousand%20Years%20_Ugblizz%20Music.mp3";
     String url2 = "http://www.similarsong.com/sites/similarsong.com/files/song/7790/adele-hello.mp3";
     String url3 = "http://www.hitsmp3.com.br/download/ed-sheeran-perfect-sympony-feat-andrea-bocelli-cover?id=http://api.soundcloud.com/tracks/370116647/stream?client_id=13621aa6735d37f4da3828200e323844&.mp3";
@@ -31,10 +44,11 @@ public class MainActivity extends AppCompatActivity implements MediaPlayer.OnPre
     String url9 = "http://94.130.135.151/dl/s6/3xKdGKaCZQkwaicGAwgEJA,1516641611/yt:lp-EO5I60KA-1/Ed%20Sheeran%20-%20Thinking%20Out%20Loud%20%5BOfficial%20Video%5D.mp3";
 
 
-    String musicas [] = {uo, url0, url2, url3, url4, url5, url6, url7, url8, url9};
+    String musicas [] = {uo, url0, url2, url3, url4, url5, url6, url7, url8, url9};*/
     int position = 0;
     boolean isPlaying = false;
     int overflow;
+    boolean shuffleOn;
     public Runnable mProgressUpdate = new Runnable() {
         @Override
         public void run() {
@@ -55,7 +69,7 @@ public class MainActivity extends AppCompatActivity implements MediaPlayer.OnPre
         @Override
         public void onClick(View v) {
             mediaPlayer.reset();
-            prepareStream(++position, musicas);
+            prepareStream(++position, trackList);
         }
     };
 
@@ -63,7 +77,7 @@ public class MainActivity extends AppCompatActivity implements MediaPlayer.OnPre
         @Override
         public void onClick(View v) {
             mediaPlayer.reset();
-            prepareStream(--position, musicas);
+            prepareStream(--position, trackList);
         }
     };
 
@@ -74,9 +88,9 @@ public class MainActivity extends AppCompatActivity implements MediaPlayer.OnPre
                 play.setText("Play");
                 mediaPlayer.pause();
                 isPlaying = false;
-            }else {
+            }else if(tracksLoaded && isPlaying) {
                 play.setText("Pause");
-                prepareStream(position, musicas);
+                prepareStream(position, trackList);
                 isPlaying = true;
             }
         }
@@ -91,26 +105,69 @@ public class MainActivity extends AppCompatActivity implements MediaPlayer.OnPre
         play = findViewById(R.id.play);
         back = findViewById(R.id.back);
         next = findViewById(R.id.next);
+        shuffle = findViewById(R.id.shuffle);
+        ProgressBar = findViewById(R.id.progressBar);
         next.setOnClickListener(nextListener);
         play.setOnClickListener(playListener);
         back.setOnClickListener(backListener);
-        ProgressBar = findViewById(R.id.progressBar);
         ProgressBar.setProgress(0);
+
+        shuffle.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton compoundButton, boolean isChecked) {
+                if(isChecked){
+                    shuffleOn = true;
+                }else{
+                    shuffleOn = false;
+                }
+
+            }
+        });
 
         mediaPlayer = new MediaPlayer();
         mediaPlayer.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
             @Override
             public void onCompletion(MediaPlayer mediaPlayer) {
-                Log.d(TAG, "onCompletion: completado!");
+                prepareStream(++position, trackList);
+                Log.d(TAG, "onCompletion: completo!");
                 mediaPlayer.reset();
+                if (shuffleOn) {
+                    int randomTrack = (int) (trackList.size() * Math.random());
+                    Log.d(TAG, "onCompletion: randomTrack" + randomTrack);
+                    prepareStream(randomTrack,trackList);
+                } else {
+                    prepareStream(++position, trackList);
+                }
+            }
+        });
+
+        getTracks();
+    }
+
+    private void getTracks() {
+        Client.Tracks client = ServiceGenerator.createService(Client.Tracks.class);
+        client.getTracks().enqueue(new Callback<List<Track>>() {
+            @Override
+            public void onResponse(Call<List<Track>> call, Response<List<Track>> response) {
+                if(response.code() == 200){
+                    trackList = response.body();
+                    Log.d(TAG, "onResponse: " + response.body().size());
+                }else{
+                    Log.d(TAG, "onResponse: code ==" + response.body());
+                }
+            }
+
+            @Override
+            public void onFailure(Call<List<Track>> call, Throwable t) {
+                Log.e(TAG, "onFailure: Ocorreu um erro!");
             }
         });
     }
 
-    private void prepareStream(int position, String[] links) {
+    private void prepareStream(int position, List<Track> tracksList) {
         try {
-            if (position > -1 && position < links.length){
-                mediaPlayer.setDataSource(links[position]);
+            if (position > -1 && position < trackList.size()){
+                mediaPlayer.setDataSource(trackList.get(position).getTrackUrl());
                 mediaPlayer.setAudioStreamType(AudioManager.STREAM_MUSIC);
                 mediaPlayer.setOnPreparedListener(this);
                 mediaPlayer.prepareAsync();
